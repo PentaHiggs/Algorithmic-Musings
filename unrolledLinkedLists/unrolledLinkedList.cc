@@ -1,9 +1,10 @@
 #include <cstddef>
-#include <stdlib.h>
+#include <algorithm>
 
 // Forward declaration of the classes to be defined in this file
 template <class T> class Node;
 template <class T> class UnrolledLinkedList;
+template <class T> class UnrolledLinkedListIterator;
 
 // Simple node class for use in UnrolledLinkedList.  This node class's public interface is meant
 // to be identical to the interface of a normal singly linked list.
@@ -28,6 +29,7 @@ class Node {
 		Node<T> *mNext;
 		int numElements;
 		T* currentElement;
+		T defaultValue;
 		T* array;
 		Node(size_t N);
 		~Node();
@@ -44,15 +46,15 @@ template <class T>
 Node<T>::Node(size_t N) {
 	mNext = nullptr;
 	numElements = 0;
-	array = malloc(N * sizeof(T));
-	memset(array, 0, N * sizeof(T));
+	array = new T[N];
+	std::fill_n(array, N, defaultValue);
 	currentElement = array;
 };
 
 // Destructor for Node<T>
 template <class T>
 Node<T>::~Node () {
-	free(array);
+	delete[] array;
 	delete mNext;
 };
 
@@ -111,7 +113,9 @@ class UnrolledLinkedList {
 	private:
 		Node<T> *mHead;
 		size_t N;
+		friend class UnrolledLinkedListIterator<T>;
 	public:
+
 		Node<T> *insert(T element, Node<T> *curr_node);
 		Node<T> *remove(Node<T> *curr_node);
 		Node<T> *head();
@@ -153,15 +157,14 @@ Node<T> *UnrolledLinkedList<T>::insert(T element, Node<T> *curr_node) {
 		// Create new node and copy half of the array into the new node
 		Node<T> *new_node = new Node<T>(N);
 		size_t moveOverElements = curr_node->numElements/2; // x/2 rounded down
-		size_t moveOverStart = (curr_node->numElements+1)/2; // x/2 roounded up
-		memcpy(	new_node->array, 
-				curr_node->array + moveOverStart,
-				moveOverElements * sizeof(T));
-		
+		size_t leftOverElements = curr_node->numElements - moveOverElements;
+		std::copy_n(curr_node->array + leftOverElements,
+					moveOverElements,
+					new_node->array);
 		// Copy over element into new node and properly set counters.
 		new_node->array[moveOverElements] = element;
 		new_node->numElements += moveOverElements + 1;
-		new_node->currentLocation += moveOverElements + 1;
+		new_node->currentLocation += moveOverElements;
 
 		// Correclty set pointers to new node
 		Node<T> *old_next = curr_node->mNext;
@@ -170,8 +173,10 @@ Node<T> *UnrolledLinkedList<T>::insert(T element, Node<T> *curr_node) {
 
 		// Delete elements that were moved over from first node
 		curr_node->currentLocation = curr_node->currentLocation - moveOverElements;
-		memset(curr_node->array + moveOverElements, 0, moveOverElements);
-
+		curr_node->numElements = leftOverElements;
+		std::fill_n(curr_node->array + curr_node->numElements,
+					moveOverElements,
+					curr_node->defaultValue);
 		return new_node;
 	}
 };
@@ -183,32 +188,33 @@ Node<T>* UnrolledLinkedList<T>::remove(Node<T> *curr_node) {
 		// In this case we need to look ahead for elements
 		if (curr_node->mNext->numElements < N/2) {
 			// We can't take any more elements, hence we need to merge
-			memcpy(	curr_node->array,
-					curr_node->mNext->array,
-					sizeof(T) * curr_node->mNext->numElements);
+			// We are purposely overwriting the current element
+			std::copy_n(curr_node->mNext->array,
+						curr_node->mNext->numElements,
+						curr_node->currentElement);
 			Node<T> *next_next = curr_node->mNext->mNext;
-			curr_node->numElements += curr_node->mNext->numElements;
+			curr_node->numElements += curr_node->mNext->numElements - 1;
 
 			// So that only this node gets deleted and it does not cascade.
 			curr_node->mNext->mNext = nullptr;
 			delete curr_node->mNext;
 			curr_node->mNext = next_next;
 			return curr_node->next();
-			}
-		else {
+			} else {
 			// We are siphoning off an element from beginning of the next node.
 			*curr_node->currentElement = *curr_node->mNext->array;
 			// Shift second array back
-			memmove(	curr_node->mNext->array,
-						curr_node->mNext->array + 1,
-						sizeof(T) * (curr_node->numElements-1));
-			memset(curr_node->mNext->currentElement, 0, sizeof(T));
-			curr_node->mNext->currentElement--;
+			std::copy_n(curr_node->mNext->array + 1,
+						curr_node->numElements - 1, 
+						curr_node->mNext->array);
 			curr_node->mNext->numElements--;
+			std::fill_n(curr_node->mNext->array + curr_node->mNext->numElements,
+						1,
+						curr_node->defaultValue);
 			return curr_node;
 			}
 	} else {
-		memset(curr_node->array[curr_node->currentElement], 0, sizeof(T));
+		std::fill_n(curr_node->currentElement, 1, curr_node->defaultValue);
 		curr_node->numElements--;
 		curr_node->currentLocation--;	
 		if (curr_node->currentLocation == curr_node->array) return nullptr;
@@ -218,8 +224,11 @@ Node<T>* UnrolledLinkedList<T>::remove(Node<T> *curr_node) {
 
 
 int main(int args, char** argv){
-	list = new UnrolledLinkedList<int>(10);
+	auto list = new UnrolledLinkedList<int>(73);
 
-	for (int i=0; i < 111; i++) {
-
-}
+	for (int i=0; i < 10844; i++) {
+		//list.insert(i); // It seems like it would make sense to make insert return the next elemetn
+		//list.next();
+	return 0;
+	}
+};
