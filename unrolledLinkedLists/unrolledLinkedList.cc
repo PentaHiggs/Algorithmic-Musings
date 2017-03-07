@@ -1,234 +1,216 @@
 #include <cstddef>
 #include <algorithm>
+#include <list>
 
-// Forward declaration of the classes to be defined in this file
-template <class T> class Node;
+// Forward declaration of publically visible classes to be defined in this file
 template <class T> class UnrolledLinkedList;
-template <class T> class UnrolledLinkedListIterator;
+template <class T, class unqualifiedT = std::remove_cv<T> > class UnrolledLinkedListIterator;
 
-// Simple node class for use in UnrolledLinkedList.  This node class's public interface is meant
-// to be identical to the interface of a normal singly linked list.
-// Template Parameter:
-//  T				- The class of the type that is being stored in the UnrolledLinkedList
-// Private fields:
-// 	mNext 	 		- A private variable containing a pointer to the next node
-// 	numelements		- A private variable containing the current number of elements
-//	array 			- A pointer to an array containing the contained elements, of size N
-//	currentElement	- A pointer to the array element data() currently returns
-// Public methods:
-//  Node* next()	- A public method returning a pointer to the node containing the next
-//						data item.  May be the same current node or the next one.
-//	T data()		- A public method returning the node's current value
-//	T data(T defaultValue)	- A public method returning the node's current value unless
-//								null, in that case returning defaultValue
-template <class T> 
-class Node {
-	private:
-		friend class UnrolledLinkedList<T>;
-
-		Node<T> *mNext;
-		int numElements;
-		T* currentElement;
-		T defaultValue;
-		T* array;
-		Node(size_t N);
-		~Node();
-
-	public:
-		Node<T> *next();
-		T data();
-		T data(T defaultValue);
-};
-
-// Private constructor for Node<T> class.
-// Takes the size of the internal array (which decides the level of unrolling) as a parameter.
 template <class T>
-Node<T>::Node(size_t N) {
-	mNext = nullptr;
-	numElements = 0;
-	array = new T[N];
-	std::fill_n(array, N, defaultValue);
-	currentElement = array;
-};
-
-// Destructor for Node<T>
-template <class T>
-Node<T>::~Node () {
-	delete[] array;
-	delete mNext;
-};
-
-// Returns a pointer to the "next" node.  In the case that the next element of the list
-// is actually in the same array in this node, then returns this node with a counter
-// variable augmented.
-template <class T>
-Node<T> *Node<T>::next() {
-	currentElement++;
-	if ((currentElement - array) == numElements) {
-		currentElement = array;
-		// Just to ensure a valid state in case we messed up somewhere
-		mNext->currentElement = mNext->array;
-		return mNext;
-	} else {
-		return this;
-	}
-};
-
-
-// Returns the data contained by the "current" node, a location within the actual node array.
-template <class T>
-T Node<T>::data() {
-	return *currentElement;
-};
-
-// Returns the data contained by the "current" node unless it is empty,
-// in which case it returns the passed in defaultValue.
-template <class T>
-T Node<T>::data(T defaultValue) {
-	if ((array - currentElement) < numElements) {
-		return *currentElement;
-	} else {
-		return defaultValue;
-	}
-};
-
-// Generic class implementing an Unrolled Linked List.  Meant to have the exact same
-// interface as a normal singly linked list.
-// Template Parameter:
-//	T
-// Private Fields:
-//  mHead		- Private variable containing a pointer to the first Node<T> of the list
-//  N			- Degree of unrolling to be employed in the list, size of internal array
-//					used in the Node<T>s that make up the list.
-// Public Methods:
-//	insert		- Inserts the given element at location given by a pointer to the node 
-//					curr_node and returns the following node.
-//	remove		- Removes node at location given by a pointer to the node curr_node
-//					and returns the node that followed it.
-//	head		- Returns the head of the list
-//	Constructor	- Initializes an unrolled linked list, with internal array size N.
-//
-template<class T>
 class UnrolledLinkedList {
 	private:
-		Node<T> *mHead;
+		class Node {
+			Node *mNext;
+			T* array;
+			int numElements;
+			std::list< UnrolledLinkedListIterator<T>* > iterators;
+			Node(size_t N) {
+				mNext = nullptr;
+				numElements = 0;
+				array = new T[N];
+				std::fill_n(array, N, defaultValue);
+			}
+			~Node() {
+				delete[] array;
+				delete mNext;
+			}
+		};
+		Node *mHead;
+		Node *mTail;
 		size_t N;
+		int numElements;
+		T defaultValue;
 		friend class UnrolledLinkedListIterator<T>;
-	public:
-
-		Node<T> *insert(T element, Node<T> *curr_node);
-		Node<T> *remove(Node<T> *curr_node);
-		Node<T> *head();
-		UnrolledLinkedList(size_t N);
+	public:	
+		typedef UnrolledLinkedListIterator<T> iterator;
+		iterator begin();
+		iterator end();
+		iterator insert(iterator, T);
+		iterator& remove(iterator&);
+		UnrolledLinkedList(size_t N, T defaultValue);
 		~UnrolledLinkedList();
 };
+
+// Constructor for UnrolledLinkedList
+template <class T>
+UnrolledLinkedList<T>::UnrolledLinkedList(size_t N, T defaultValue) 
+	: N(N) , defaultValue(defaultValue) {
+	mHead = new Node(N);
+	return;
+}
 
 // Destructor for UnrolledLinkedList
 template <class T>
 UnrolledLinkedList<T>::~UnrolledLinkedList(){
-	delete mHead;	 
-};
+	delete mHead;
+	return;
+}
 
-// Constructor for UnrolledLinkedList, takes in degree of unrolling (the
-// size of the internal array) as a parameter.
+// Returns an iterator pointing to the beginning of the list
 template <class T>
-UnrolledLinkedList<T>::UnrolledLinkedList(size_t N) : N(N) {
-	head = new Node<T>(N);
-};
+UnrolledLinkedListIterator<T> UnrolledLinkedList<T>::begin(){
+	return UnrolledLinkedListIterator<T>(this, mHead, 0);
+}
 
-// Returns the head node of the list
+// Returns an iterator pointing to the end of the list
 template <class T>
-Node<T> *UnrolledLinkedList<T>::head() {
-	// Reset the internal counter to the beginning of internal array
-	mHead->currentElement = mHead->array;
-	return mHead;
-};
+UnrolledLinkedListIterator<T> UnrolledLinkedList<T>::end(){
+	return UnrolledLinkedListIterator<T>(this, mTail, mTail->numElements);
+}
 
-// Insert element after location and return node containing element just inserted
+// Insert an element of type T after position given by the iterator.
+// Return an iterator to the inserted element
 template <class T>
-Node<T> *UnrolledLinkedList<T>::insert(T element, Node<T> *curr_node) {
-	if (curr_node->numElements < N) {
-		// In this case, we can just append to the end of the array.
-		curr_node->array[curr_node->numElements] = element;
-		curr_node->numElements++;
-		curr_node->currentLocation++;
-		return curr_node;
+UnrolledLinkedListIterator<T> UnrolledLinkedList<T>::insert(UnrolledLinkedListIterator<T> iterator, T element) {
+	if (iterator.currNode->numElements < N) {
+		// In this case, we can just append to the end of the internal array.
+		iterator.currNode->array[iterator.currNode->numElements] = element;
+		iterator.currNode->numElements++;
 	} else {
-		// Create new node and copy half of the array into the new node
-		Node<T> *new_node = new Node<T>(N);
-		size_t moveOverElements = curr_node->numElements/2; // x/2 rounded down
-		size_t leftOverElements = curr_node->numElements - moveOverElements;
-		std::copy_n(curr_node->array + leftOverElements,
-					moveOverElements,
-					new_node->array);
+		// Create a new node and copy half of the array into the new node to make space
+		Node *nextNode = new Node(N);
+		Node *nextNextNode = iterator.currNode->nextNode;
+		int moveOver = iterator.currNode->numElements/2;
+		int leftOver = iterator.currNode->numElements - moveOver;
+		std::copy_n(iterator.currNode->array + leftOver,
+					moveOver,
+					nextNode->array);
+
 		// Copy over element into new node and properly set counters.
-		new_node->array[moveOverElements] = element;
-		new_node->numElements += moveOverElements + 1;
-		new_node->currentLocation += moveOverElements;
+		nextNode->array[moveOver] = element;
+		nextNode->numElements = moveOver+1;
+		iterator.currNode->numElements -= moveOver;
 
-		// Correclty set pointers to new node
-		Node<T> *old_next = curr_node->mNext;
-		new_node->mNext = old_next;
-		curr_node->mNext = new_node;
-
-		// Delete elements that were moved over from first node
-		curr_node->currentLocation = curr_node->currentLocation - moveOverElements;
-		curr_node->numElements = leftOverElements;
-		std::fill_n(curr_node->array + curr_node->numElements,
-					moveOverElements,
-					curr_node->defaultValue);
-		return new_node;
-	}
-};
-
-// Remove element at location from list.  Return pointer to next element
-template <class T>
-Node<T>* UnrolledLinkedList<T>::remove(Node<T> *curr_node) {
-	if (curr_node->numElements <= N/2 && curr_node->mNext) {
-		// In this case we need to look ahead for elements
-		if (curr_node->mNext->numElements < N/2) {
-			// We can't take any more elements, hence we need to merge
-			// We are purposely overwriting the current element
-			std::copy_n(curr_node->mNext->array,
-						curr_node->mNext->numElements,
-						curr_node->currentElement);
-			Node<T> *next_next = curr_node->mNext->mNext;
-			curr_node->numElements += curr_node->mNext->numElements - 1;
-
-			// So that only this node gets deleted and it does not cascade.
-			curr_node->mNext->mNext = nullptr;
-			delete curr_node->mNext;
-			curr_node->mNext = next_next;
-			return curr_node->next();
-			} else {
-			// We are siphoning off an element from beginning of the next node.
-			*curr_node->currentElement = *curr_node->mNext->array;
-			// Shift second array back
-			std::copy_n(curr_node->mNext->array + 1,
-						curr_node->numElements - 1, 
-						curr_node->mNext->array);
-			curr_node->mNext->numElements--;
-			std::fill_n(curr_node->mNext->array + curr_node->mNext->numElements,
-						1,
-						curr_node->defaultValue);
-			return curr_node;
+		// Update any iterators that may have been broken
+		for (auto it = iterator.currNode.iterators.begin();
+				it != iterator.currNode.iterators.end(); ++it){
+			if (*it->currPos >= moveOver) {
+				// Need to migrate the iterator to the new node
+				iterator.currNode->mNext.iterators.push_back(it);
+				iterator.currNode.iterators.erase(it);
+				// Need to ensure it points to the correct place
+				*it->currPos -= leftOver;
 			}
+		}
+
+		// Correctly set pointers to point to the new node
+		nextNode->mNext = nextNextNode;
+		iterator.currNode->mNext = nextNode;
+
+		// Overwrite elements that were moved over from first node
+		std::fill_n(iterator.currNode->array + iterator.currNode->numElements,
+					moveOver,
+					defaultValue);
+	}
+	return ++iterator;
+}
+
+// Remove element at location iterator from list.  Return invalidated iterator
+template <class T>
+UnrolledLinkedListIterator<T>& UnrolledLinkedList<T>::remove(UnrolledLinkedListIterator<T>& iterator) {
+	Node *nextNode = iterator.currNode->mNext;
+	if (iterator.currNode->numElements <= N/2 && nextNode) {
+		// In this case we need to look ahead for elements to suction in to this node
+		if (nextNode->numElements < N/2) { 
+			// We can't suction more elements, we need to merge the nodes.
+			// Overwrite one element to delete T
+			std::copy_n(nextNode->array,
+						nextNode->numElements,
+						iterator.currNode->array + iterator.currNode->numElements - 1);
+			Node *nextNext = nextNode->mNext;
+			iterator.currNode->numElements += nextNode->numElements-1;
+
+			// Delete and invalidate iterator of deleted element
+			for (auto it = iterator.currNode.iterators.begin();
+					it != iterator.currNode.iterators.end(); ++it){
+				if (**it == iterator) {
+					*it->currNode = nullptr;
+					iterator.currNode.iterators.erase(it);
+					break;
+				}
+			}
+			// Update modified iterators
+			for (auto it = nextNode.iterators.begin();
+				it != nextNode.iterators.end(); ++it) {
+				// Move over responsibility of iterators to this node
+				iterator.currNode->iterators.push_back(*it);
+				// Properly set them to point into this node
+				*it->currPos += numElements;
+				*it->currNode = iterator.currNode;	
+			}
+			// So that only this node gets deleted and it does not cascade.
+			iterator.currNode->mNext->mNext = nullptr;
+			delete iterator.currNode->mNext;
+			iterator.currNode->mNext = nextNext;
+		} else { 
+			// We don't merge in next node, but just pull in one element.
+			std::copy_n(nextNode->array + 1,			
+						nextNode->numElements-1,
+						nextNode->array);
+			std::fill_n(nextNode->array + nextNode->numElements - 1,
+						1,
+						defaultValue);
+			iterator.currNode->numElements--;
+			// Update iterators
+			for (auto it = iterator.currNode.iterators.begin();
+				it != iterator.currNode.iterators.end(); ++it){
+				if (**it.currPos > iterator.currPos) {
+					**it.currPos--;
+				} else if (**it.currPos == iterator.currPos) {
+					**it.currNode = nullptr;
+				}
+			}
+		}
 	} else {
-		std::fill_n(curr_node->currentElement, 1, curr_node->defaultValue);
-		curr_node->numElements--;
-		curr_node->currentLocation--;	
-		if (curr_node->currentLocation == curr_node->array) return nullptr;
-		else return curr_node;
+		// No elements will be moved across nodes since numElements > N/2
+		std::copy_n(iterator.currNode->array[iterator.currPos+1],
+					iterator.currNode->numElements - iterator.currPos - 1,
+					iterator.currNode->array[iterator.currPos]);
+		// Update any borked iterators
+		for (auto it = iterator.currNode.iterators.begin();
+				it!= iterator.currNodde.iterators.end(); ++it) {
+			if (**it.currPos > iterator.currPos) {
+				**it.currPos--;
+			} else if (**it.currPoos == iterator.currPos) {
+				**it.currNode = nullptr;
+			}
+		}
 	}
+	return iterator;
+}
+
+template <class T, class unqualifiedT>
+class UnrolledLinkedListIterator : public std::iterator<
+									std::forward_iterator_tag,	// iterator category
+									unqualifiedT,				// data type
+									std::ptrdiff_t				// iterator difference type
+									>{
+private:
+	typedef typename UnrolledLinkedList<T>::Node Node;
+	explicit UnrolledLinkedListIterator(UnrolledLinkedList<T>*, int);
+	UnrolledLinkedListIterator(UnrolledLinkedList<T>*, Node, int);
+	Node* currNode;
+	int currPos;
+public:
+	UnrolledLinkedListIterator();
+	void swap(UnrolledLinkedListIterator&) noexcept;
+	UnrolledLinkedListIterator& operator++ ();
+	UnrolledLinkedListIterator operator++ (int);
+	template<class T2>
+	bool operator!= (const UnrolledLinkedListIterator<T2>&) const;
+	T& operator* () const;
+	T& operator-> () const;
+	operator UnrolledLinkedList<const T>() const;
 };
 
 
-int main(int args, char** argv){
-	auto list = new UnrolledLinkedList<int>(73);
-
-	for (int i=0; i < 10844; i++) {
-		//list.insert(i); // It seems like it would make sense to make insert return the next elemetn
-		//list.next();
-	return 0;
-	}
-};
